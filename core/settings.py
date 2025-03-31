@@ -27,6 +27,20 @@ else:
     allowed_host = os.environ.get('ALLOWED_HOST', '')
     ALLOWED_HOSTS = [h.strip() for h in allowed_host.split(',') if h.strip()]
 
+# CORS settings
+CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
+if not DEBUG:
+    # Parse ALLOWED_HOST to create proper CORS origins
+    allowed_host = os.environ.get('ALLOWED_HOST', '')
+    CORS_ALLOWED_ORIGINS = []
+    for host in allowed_host.split(','):
+        host = host.strip()
+        if host:
+            # Add both http and https variants for each host
+            CORS_ALLOWED_ORIGINS.append(f"https://{host}")
+            # Uncomment the next line if you need HTTP origins too
+            # CORS_ALLOWED_ORIGINS.append(f"http://{host}")
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -172,17 +186,10 @@ EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
 EMAIL_TIMEOUT = 10
 
-# CORS settings
-CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
-if not DEBUG:
-    CORS_ALLOWED_ORIGINS = [
-        f"https://{os.environ.get('ALLOWED_HOST', '')}",
-        "https://www.digiswitchtech.com",
-    ]
-
 # Production-specific security settings
 if not DEBUG:
-    SECURE_SSL_REDIRECT = True
+    # Comment out SECURE_SSL_REDIRECT to avoid redirect loops on Railway
+    # SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -190,3 +197,6 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    
+    # Add this setting to handle the proxy headers from Railway
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
