@@ -13,7 +13,11 @@ class CustomUserManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)  # Use set_password() to hash the password
-        user.is_active = False
+        
+        # Only set is_active=False if not explicitly provided
+        if 'is_active' not in extra_fields:
+            user.is_active = False
+            
         user.save(using=self._db)
         return user
 
