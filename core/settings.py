@@ -7,24 +7,25 @@ from datetime import timedelta
 # Load environment variables from .env file
 load_dotenv()
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-
 # Get environment settings
 DJANGO_ENV = os.environ.get('DJANGO_ENV', 'development')
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-key-for-development')
+SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = DJANGO_ENV != 'production'
 
 # Configure allowed hosts based on environment
-ALLOWED_HOSTS = ['*'] if DEBUG else [
-    'localhost',
-    '127.0.0.1',
-    os.environ.get('ALLOWED_HOST', ''),
-]
+if DEBUG:
+    ALLOWED_HOSTS = ['*']  # Allow all hosts in development
+else:
+    # Add comma-separated hosts from environment variable
+    allowed_host = os.environ.get('ALLOWED_HOST', '')
+    ALLOWED_HOSTS = [h.strip() for h in allowed_host.split(',') if h.strip()]
 
 # Application definition
 INSTALLED_APPS = [
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'rest_framework_simplejwt',
+    'drf_yasg',
 ]
 
 MIDDLEWARE = [
@@ -54,7 +56,7 @@ MIDDLEWARE = [
 ]
 
 # Add whitenoise for static files in production
-if DJANGO_ENV == 'production':
+if not DEBUG:
     MIDDLEWARE.insert(1, 'whitenoise.middleware.WhiteNoiseMiddleware')
     STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
@@ -171,7 +173,7 @@ EMAIL_USE_SSL = False
 EMAIL_TIMEOUT = 10
 
 # CORS settings
-CORS_ALLOW_ALL_ORIGINS = DEBUG
+CORS_ALLOW_ALL_ORIGINS = True if DEBUG else False
 if not DEBUG:
     CORS_ALLOWED_ORIGINS = [
         f"https://{os.environ.get('ALLOWED_HOST', '')}",
@@ -179,7 +181,7 @@ if not DEBUG:
     ]
 
 # Production-specific security settings
-if DJANGO_ENV == 'production':
+if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True

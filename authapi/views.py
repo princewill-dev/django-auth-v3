@@ -21,6 +21,9 @@ from rest_framework_simplejwt.tokens import RefreshToken, TokenError, AccessToke
 from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.exceptions import InvalidToken
 
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
 from .models import User, BlacklistedToken
 from .throttles import SignupRateThrottle, LoginRateThrottle, OTPVerificationRateThrottle
 from .token_utils import get_tokens_for_user
@@ -36,7 +39,34 @@ from .serializers import (
 User = get_user_model()
 
 class CustomTokenRefreshView(TokenRefreshView):
+    """
+    Custom token refresh view that checks user's last activity time.
+    """
     throttle_classes = [AnonRateThrottle, UserRateThrottle]
+    
+    @swagger_auto_schema(
+        operation_description="Refresh access token using refresh token with activity validation",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['refresh'],
+            properties={
+                'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='Refresh token')
+            },
+        ),
+        responses={
+            200: openapi.Response(
+                description="Token refresh successful",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'access': openapi.Schema(type=openapi.TYPE_STRING, description='New access token'),
+                        'refresh': openapi.Schema(type=openapi.TYPE_STRING, description='New refresh token')
+                    }
+                )
+            ),
+            401: openapi.Response(description="Invalid token or token expired due to inactivity")
+        }
+    )
     def post(self, request, *args, **kwargs):
         refresh_token = request.data.get('refresh')
         try:
@@ -49,8 +79,37 @@ class CustomTokenRefreshView(TokenRefreshView):
             return Response({"detail": "Invalid token."}, status=status.HTTP_401_UNAUTHORIZED)
 
 class UserRegistrationView(APIView):
+    """
+    API view for user registration with OTP verification.
+    """
     throttle_classes = [AnonRateThrottle, SignupRateThrottle]
+    permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Register a new user account",
+        request_body=UserRegistrationSerializer,
+        responses={
+            201: openapi.Response(
+                description="Registration successful",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN, description='Success status'),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING, description='Success message'),
+                        'user': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'email': openapi.Schema(type=openapi.TYPE_STRING),
+                                'first_name': openapi.Schema(type=openapi.TYPE_STRING),
+                                'last_name': openapi.Schema(type=openapi.TYPE_STRING)
+                            }
+                        )
+                    }
+                )
+            ),
+            400: openapi.Response(description="Registration failed due to validation errors")
+        }
+    )
     def post(self, request):
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
@@ -88,8 +147,38 @@ class UserRegistrationView(APIView):
         }, status=status.HTTP_400_BAD_REQUEST)
 
 class OTPVerificationView(APIView):
+    """
+    API view for verifying OTP sent to user's email during registration.
+    """
     throttle_classes = [AnonRateThrottle, OTPVerificationRateThrottle]
+    permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Verify account using OTP sent to email",
+        request_body=OTPVerificationSerializer,
+        responses={
+            200: openapi.Response(
+                description="Account verified successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'tokens': openapi.Schema(
+                            type=openapi.TYPE_OBJECT,
+                            properties={
+                                'access': openapi.Schema(type=openapi.TYPE_STRING),
+                                'refresh': openapi.Schema(type=openapi.TYPE_STRING)
+                            }
+                        ),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT)
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid or expired OTP"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def post(self, request):
         serializer = OTPVerificationSerializer(data=request.data)
         if serializer.is_valid():
@@ -142,8 +231,27 @@ class OTPVerificationView(APIView):
         }, status=status.HTTP_400_BAD_REQUEST)
 
 class ResendOTPView(APIView):
+    """
+    API view for resending OTP to user's email if the original OTP is expired or lost.
+    """
     throttle_classes = [AnonRateThrottle, OTPVerificationRateThrottle]
+    permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Resend OTP verification code to email",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email'],
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email address')
+            },
+        ),
+        responses={
+            200: openapi.Response(description="OTP resent successfully"),
+            400: openapi.Response(description="Account is already verified or email is missing"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def post(self, request):
         email = request.data.get('email')
         if not email:
@@ -187,8 +295,30 @@ class ResendOTPView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
 
 class UserLoginView(APIView):
+    """
+    API view for user login with JWT token generation.
+    """
     throttle_classes = [AnonRateThrottle, LoginRateThrottle]
+    permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Login with email and password",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email', 'password'],
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING),
+                'password': openapi.Schema(type=openapi.TYPE_STRING, format='password')
+            }
+        ),
+        responses={
+            200: openapi.Response(description="Login successful with tokens"),
+            400: openapi.Response(description="Email and password required"),
+            401: openapi.Response(description="Invalid credentials"),
+            403: openapi.Response(description="Account not verified"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def post(self, request):
         email = request.data.get('email')
         password = request.data.get('password')
@@ -236,10 +366,29 @@ class UserLoginView(APIView):
             }, status=status.HTTP_404_NOT_FOUND)
         
 class UserProfileView(APIView):
+    """
+    API view for retrieving and updating user profile information.
+    """
     authentication_classes = [CustomJWTAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [UserRateThrottle]
     
+    @swagger_auto_schema(
+        operation_description="Get user profile details",
+        responses={
+            200: openapi.Response(
+                description="Profile details retrieved successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'success': openapi.Schema(type=openapi.TYPE_BOOLEAN),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT)
+                    }
+                )
+            ),
+            401: openapi.Response(description="Authentication credentials not provided or invalid")
+        }
+    )
     def get(self, request):
         """Get user profile details"""
         user = request.user
@@ -249,6 +398,15 @@ class UserProfileView(APIView):
             'user': serializer.data
         }, status=status.HTTP_200_OK)
     
+    @swagger_auto_schema(
+        operation_description="Update user profile details",
+        request_body=UserProfileUpdateSerializer,
+        responses={
+            200: openapi.Response(description="Profile updated successfully"),
+            400: openapi.Response(description="Invalid data provided"),
+            401: openapi.Response(description="Authentication credentials not provided or invalid")
+        }
+    )
     def put(self, request):
         """Update user profile details"""
         user = request.user
@@ -266,15 +424,35 @@ class UserProfileView(APIView):
             'error': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
         
+    @swagger_auto_schema(
+        operation_description="Partially update user profile details",
+        request_body=UserProfileUpdateSerializer,
+        responses={
+            200: openapi.Response(description="Profile updated successfully"),
+            400: openapi.Response(description="Invalid data provided"),
+            401: openapi.Response(description="Authentication credentials not provided or invalid")
+        }
+    )
     def patch(self, request):
         """Partially update user profile details"""
         return self.put(request)
 
 class UserLogoutView(APIView):
+    """
+    API view for user logout with JWT token blacklisting.
+    """
     authentication_classes = [CustomJWTAuthentication]
     permission_classes = [IsAuthenticated]
     throttle_classes = [UserRateThrottle]
     
+    @swagger_auto_schema(
+        operation_description="Logout user and blacklist their JWT token",
+        responses={
+            200: openapi.Response(description="Logged out successfully"),
+            400: openapi.Response(description="Invalid token or token processing error"),
+            401: openapi.Response(description="Authentication credentials not provided")
+        }
+    )
     def post(self, request):
         try:
             # Get the auth header and extract the token
@@ -326,10 +504,28 @@ class UserLogoutView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 class PasswordResetView(APIView):
+    """
+    API view for password reset functionality with OTP verification.
+    """
     throttle_classes = [OTPVerificationRateThrottle]
     permission_classes = [AllowAny]
     authentication_classes = []  # Empty list means no authentication is attempted
 
+    @swagger_auto_schema(
+        operation_description="Send password reset OTP to user's email",
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            required=['email'],
+            properties={
+                'email': openapi.Schema(type=openapi.TYPE_STRING, description='Email address')
+            },
+        ),
+        responses={
+            200: openapi.Response(description="Password reset OTP sent successfully"),
+            400: openapi.Response(description="Email is required"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def post(self, request):
         email = request.data.get('email')
         if not email:
@@ -368,6 +564,15 @@ class PasswordResetView(APIView):
                 'error': 'No account exists with this email address'
             }, status=status.HTTP_404_NOT_FOUND)
 
+    @swagger_auto_schema(
+        operation_description="Reset password using OTP and new password",
+        request_body=PasswordResetSerializer,
+        responses={
+            200: openapi.Response(description="Password reset successfully"),
+            400: openapi.Response(description="Validation failed, passwords don't match, or invalid OTP"),
+            404: openapi.Response(description="User not found")
+        }
+    )
     def put(self, request):
         serializer = PasswordResetSerializer(data=request.data)
         if not serializer.is_valid():
